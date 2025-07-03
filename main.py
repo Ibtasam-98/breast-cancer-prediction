@@ -1,153 +1,231 @@
-import streamlit as st
 import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+import os
+import pickle
+from preprocessing.preprocessing import load_data, feature_selection, prepare_data, scale_data
+from models.model_definitions import get_models
+from models.model_utils import evaluate_model
+from visualization.plots import plot_metrics_comparison, plot_learning_curves, plot_confusion_matrices, \
+    plot_feature_correlations, plot_feature_importances, plot_roc_curves
+from config import settings
 
 
-# Load the dataset (you can replace this with your actual dataset loading code)
-@st.cache_data
-def load_data():
-    # This is just a sample - replace with your actual dataset loading code
-    data = pd.read_csv('dataset/breast-cancer.csv')  # Update with your file path
-    return data
+def save_models_and_scaler(models, scaler, folder='saved_models'):
+    """Save trained models and scaler to disk"""
+    os.makedirs(folder, exist_ok=True)
+
+    # Save models
+    for name, model in models.items():
+        filename = os.path.join(folder, f"{name.lower().replace(' ', '_')}.pkl")
+        with open(filename, 'wb') as f:
+            pickle.dump(model, f)
+        print(f"Saved model: {filename}")
+
+    # Save scaler
+    scaler_filename = os.path.join(folder, 'scaler.pkl')
+    with open(scaler_filename, 'wb') as f:
+        pickle.dump(scaler, f)
+    print(f"Saved scaler: {scaler_filename}")
 
 
-# Preprocess data and train model
-@st.cache_resource
-def train_model():
-    data = load_data()
+def train_and_evaluate_models(model_definitions, X_train, y_train, X_test, y_test):
+    """Helper function to train and evaluate models"""
+    results = []
+    trained_models = {}
 
-    # Convert diagnosis to binary (M = 1, B = 0)
-    data['diagnosis'] = data['diagnosis'].map({'M': 1, 'B': 0})
+    for name, definition in model_definitions.items():
+        print(f"\nTraining {name}...")
+        try:
+            metrics = evaluate_model(
+                definition['model'],
+                definition['params'],
+                definition.get('learning_rate_param'),
+                X_train,
+                y_train,
+                X_test,
+                y_test
+            )
 
-    # Select features - using the most important ones from the dataset
-    features = ['radius_mean', 'texture_mean', 'perimeter_mean', 'area_mean',
-                'smoothness_mean', 'compactness_mean', 'concavity_mean',
-                'concave points_mean', 'radius_worst', 'texture_worst']
+            results.append({
+                'model': name,
+                'train_accuracy': metrics['train_accuracy'],
+                'test_accuracy': metrics['test_accuracy'],
+                'training_time': metrics['training_time'],
+                'best_params': metrics['best_params'],
+                'learning_rate': metrics.get('learning_rate'),
+                'classification_report': metrics['classification_report']
+            })
 
-    X = data[features]
-    y = data['diagnosis']
+            trained_models[name] = metrics['model']
+        except Exception as e:
+            print(f"Error training {name}: {str(e)}")
+            continue
 
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Scale features
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
-
-    # Train model
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
-
-    # Evaluate
-    y_pred = model.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
-
-    return model, scaler, accuracy, features
+    return results, trained_models
 
 
-# Create the Streamlit app
+def print_results(results):
+    """Helper function to print results"""
+    if not results:
+        print("No results to display")
+        return
+
+    results_df = pd.DataFrame(results)
+    columns_to_display = ['model', 'train_accuracy', 'test_accuracy', 'training_time']
+    if 'learning_rate' in results_df.columns:
+        columns_to_display.append('learning_rate')
+    print(results_df[columns_to_display].sort_values('test_accuracy', ascending=False).to_string(index=False))
+
+
 def main():
-    st.title("Breast Cancer Prediction App")
-    st.write("""
-    This app predicts whether a breast tumor is **malignant (M)** or **benign (B)** based on cell characteristics.
-    Adjust the sliders to input tumor characteristics and click **Predict** to see the result.
-    """)
+    # Create output directories if they don't exist
+    os.makedirs('output', exist_ok=True)
+    os.makedirs('saved_models/all_features', exist_ok=True)  # Ensure this directory exists
 
-    # Load model and scaler
-    model, scaler, accuracy, features = train_model()
-    st.sidebar.write(f"Model Accuracy: {accuracy:.2%}")
+    # Get model definitions first
+    model_definitions = get_models()
 
-    # Create sliders for each feature
-    st.sidebar.header("Input Tumor Characteristics")
+    # Load and preprocess data
+    try:
+        data = load_data('dataset/breast-cancer.csv')
+    except Exception as e:
+        print(f"Error loading data: {str(e)}")
+        return
 
-    input_data = {}
+    try:
+        data, high_corr_features = feature_selection(data)
+        print("\nFeature correlations with target:")
+        print(data.corr()['diagnosis'].abs().sort_values(ascending=False))
 
-    # Radius mean (average radius of tumor cells)
-    input_data['radius_mean'] = st.sidebar.slider(
-        "Radius Mean (average distance from center to points on the perimeter)",
-        6.0, 30.0, 15.0, 0.1)
+        print("\nHighly correlated features selected:")
+        print(high_corr_features)
+    except Exception as e:
+        print(f"Error during feature selection: {str(e)}")
+        return
 
-    # Texture mean (standard deviation of gray-scale values)
-    input_data['texture_mean'] = st.sidebar.slider(
-        "Texture Mean (standard deviation of gray-scale values)",
-        9.0, 40.0, 20.0, 0.1)
+    # Plot feature correlations if we have features
+    if high_corr_features:
+        try:
+            # Ensure we only plot features that exist in the dataframe
+            existing_features = [f for f in high_corr_features if f in data.columns]
+            if existing_features:
+                corr_fig = plot_feature_correlations(data, existing_features)
+                corr_fig.savefig('output/feature_correlations.png', bbox_inches='tight')
+                plt.close(corr_fig)
+                print("\nSaved feature correlation plot to output/feature_correlations.png")
+            else:
+                print("\nNo existing features found for correlation plot")
+        except Exception as e:
+            print(f"Error plotting feature correlations: {str(e)}")
+    else:
+        print("\nNo highly correlated features found - skipping correlation plot")
 
-    # Perimeter mean
-    input_data['perimeter_mean'] = st.sidebar.slider(
-        "Perimeter Mean (average size of the core tumor)",
-        40.0, 190.0, 100.0, 0.1)
+    # Prepare data with all features
+    try:
+        X_train, X_test, y_train, y_test = prepare_data(data)
+        X_train_scaled, X_test_scaled, scaler = scale_data(X_train, X_test)  # Get the scaler object
+    except Exception as e:
+        print(f"Error preparing all-features data: {str(e)}")
+        return
 
-    # Area mean
-    input_data['area_mean'] = st.sidebar.slider(
-        "Area Mean",
-        150.0, 2500.0, 700.0, 1.0)
+    # Prepare data with only highly correlated features (if any exist)
+    results_hc = []
+    models_hc = {}
 
-    # Smoothness mean
-    input_data['smoothness_mean'] = st.sidebar.slider(
-        "Smoothness Mean (local variation in radius lengths)",
-        0.05, 0.20, 0.1, 0.001)
+    if high_corr_features:
+        try:
+            # Ensure we only use features that exist in the dataframe
+            existing_features = [f for f in high_corr_features if f in data.columns]
+            if existing_features:
+                high_corr_data = data[existing_features + ['diagnosis']]
+                X_train_hc, X_test_hc, y_train_hc, y_test_hc = prepare_data(high_corr_data)
+                X_train_hc_scaled, X_test_hc_scaled, scaler_hc = scale_data(X_train_hc, X_test_hc)
 
-    # Compactness mean
-    input_data['compactness_mean'] = st.sidebar.slider(
-        "Compactness Mean (perimeter^2 / area - 1.0)",
-        0.02, 0.35, 0.1, 0.001)
+                # Train and evaluate models on highly correlated features only
+                print("\n=== Training on highly correlated features only ===")
+                results_hc, models_hc = train_and_evaluate_models(
+                    model_definitions,
+                    X_train_hc_scaled,
+                    y_train_hc,
+                    X_test_hc_scaled,
+                    y_test_hc
+                )
+                # Save models trained on highly correlated features
+                save_models_and_scaler(models_hc, scaler_hc, 'saved_models/high_corr_features')
+            else:
+                print("\nNo existing highly correlated features - skipping this training")
+        except Exception as e:
+            print(f"Error processing highly correlated features: {str(e)}")
+            results_hc = []
+            models_hc = {}
+    else:
+        print("\nNo highly correlated features - skipping training on subset")
 
-    # Concavity mean
-    input_data['concavity_mean'] = st.sidebar.slider(
-        "Concavity Mean (severity of concave portions of the contour)",
-        0.0, 0.45, 0.1, 0.001)
+    # Train and evaluate models on all features
+    print("\n=== Training on all features ===")
+    results_all, models_all = train_and_evaluate_models(
+        model_definitions,
+        X_train_scaled,
+        y_train,
+        X_test_scaled,
+        y_test
+    )
 
-    # Concave points mean
-    input_data['concave points_mean'] = st.sidebar.slider(
-        "Concave Points Mean (number of concave portions of the contour)",
-        0.0, 0.2, 0.05, 0.001)
+    # Save models trained on all features AND the scaler
+    save_models_and_scaler(models_all, scaler, 'saved_models/all_features')
 
-    # Radius worst
-    input_data['radius_worst'] = st.sidebar.slider(
-        "Radius Worst (largest radius)",
-        7.0, 37.0, 20.0, 0.1)
+    # Compare results
+    print("\n=== Performance Comparison ===")
+    print("\nAll features:")
+    print_results(results_all)
 
-    # Texture worst
-    input_data['texture_worst'] = st.sidebar.slider(
-        "Texture Worst (worst texture)",
-        12.0, 50.0, 25.0, 0.1)
+    if results_hc:
+        print("\nHighly correlated features only:")
+        print_results(results_hc)
+    else:
+        print("\nNo results for highly correlated features")
 
-    # Convert input to dataframe
-    input_df = pd.DataFrame([input_data])
-
-    # Display user inputs
-    st.subheader("User Input Features")
-    st.write(input_df)
-
-    # Preprocess input
-    input_scaled = scaler.transform(input_df)
-
-    # Make prediction
-    if st.button("Predict"):
-        prediction = model.predict(input_scaled)
-        prediction_proba = model.predict_proba(input_scaled)
-
-        st.subheader("Prediction")
-        diagnosis = "Malignant (M)" if prediction[0] == 1 else "Benign (B)"
-        st.write(diagnosis)
-
-        st.subheader("Prediction Probability")
-        st.write(f"Benign (B): {prediction_proba[0][0]:.2%}")
-        st.write(f"Malignant (M): {prediction_proba[0][1]:.2%}")
-
-        # Interpretation
-        st.subheader("Interpretation")
-        if prediction[0] == 1:
-            st.warning(
-                "The model predicts this tumor is likely malignant (cancerous). Please consult with a medical professional.")
+    # Print detailed classification reports
+    print("\n=== Detailed Classification Reports ===")
+    for result in results_all:
+        print(f"\n{result['model']}:")
+        print(f"Best params: {result['best_params']}")
+        if 'classification_report' in result:
+            print("Classification Report:")
+            print(result['classification_report'])
         else:
-            st.success(
-                "The model predicts this tumor is likely benign (non-cancerous). However, always consult with a medical professional for proper diagnosis.")
+            print("No classification report available")
+        print(f"Training time: {result['training_time']:.2f} seconds")
+        print("-" * 80)
+
+    # Generate all visualizations
+    try:
+        # Performance comparison plot (if we have both sets of results)
+        if results_all and results_hc:
+            comparison_fig = plot_metrics_comparison(results_all, results_hc)
+            comparison_fig.savefig('output/performance_comparison.png', bbox_inches='tight')
+            plt.close(comparison_fig)
+            print("\nSaved performance comparison plot to output/performance_comparison.png")
+
+        # Learning curves for all models
+        learning_curve_fig = plot_learning_curves(models_all, X_train_scaled, y_train)
+        learning_curve_fig.savefig('output/learning_curves_all.png', bbox_inches='tight')
+        plt.close(learning_curve_fig)
+        print("Saved learning curves plot to output/learning_curves_all.png")
+
+        # Confusion matrices for all models
+        confusion_matrix_fig = plot_confusion_matrices(models_all, X_test_scaled, y_test)
+        confusion_matrix_fig.savefig('output/confusion_matrices_all.png', bbox_inches='tight')
+        plt.close(confusion_matrix_fig)
+        print("Saved confusion matrices plot to output/confusion_matrices_all.png")
+
+        # Feature importance for tree-based models
+        plot_feature_importances(models_all, X_train.columns)
+
+        plot_roc_curves(models_all, X_test_scaled, y_test)
+
+    except Exception as e:
+        print(f"Error generating visualizations: {str(e)}")
 
 
 if __name__ == "__main__":
