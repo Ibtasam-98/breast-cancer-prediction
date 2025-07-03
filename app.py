@@ -2,249 +2,367 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
+import time
 import os
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import (accuracy_score, classification_report,
+                             confusion_matrix, roc_curve, auc)
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import (RandomForestClassifier,
+                              GradientBoostingClassifier)
+from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.ensemble import StackingClassifier
+
+# Set page config
+st.set_page_config(
+    page_title="Breast Cancer Classification",
+    page_icon=":hospital:",
+    layout="wide"
+)
 
 # Configuration
-MODELS_DIR = "saved_models/all_features"
-HIGHLY_CORRELATED_FEATURES = [
-    'concave points_worst', 'perimeter_worst', 'concave points_mean',
-    'radius_worst', 'perimeter_mean', 'area_worst', 'radius_mean', 'area_mean'
+RANDOM_STATE = 42
+TEST_SIZE = 0.2
+MODEL_SAVE_PATH = "saved_models"
+os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
+
+# Highly correlated features (from your analysis)
+HIGHLY_CORR_FEATURES = [
+    'concave points_worst',
+    'perimeter_worst',
+    'concave points_mean',
+    'radius_worst',
+    'perimeter_mean',
+    'area_worst',
+    'radius_mean',
+    'area_mean'
 ]
 
 
-# Load the dataset
+# Load data
 @st.cache_data
 def load_data():
-    data = pd.read_csv('dataset/breast-cancer.csv')
-    data = data.drop(['id'], axis=1)
-    data['diagnosis'] = data['diagnosis'].map({'M': 1, 'B': 0})
-    return data
+    """Load and preprocess the breast cancer dataset"""
+    try:
+        data = pd.read_csv('dataset/breast-cancer.csv')
+        data = data.drop(['id'], axis=1)
+        data['diagnosis'] = data['diagnosis'].map({'M': 1, 'B': 0})
+
+        # Select only highly correlated features
+        features = [f for f in HIGHLY_CORR_FEATURES if f in data.columns]
+        data = data[features + ['diagnosis']]
+
+        return data
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
+        return None
 
 
-# Load trained models and scaler
-@st.cache_resource
-def load_models_and_scaler():
-    model_files = {
-        'Gradient Boosting': 'gradient_boosting.pkl',
-        'KNN': 'knn.pkl',
-        'Random Forest': 'random_forest.pkl',
-        'SGD Classifier': 'sgd_classifier.pkl',
-        'Stacking': 'stacking.pkl',
-        'SVM Linear': 'svm_linear.pkl',
-        'SVM RBF': 'svm_rbf.pkl'
+# Model definitions
+def get_models():
+    """Return dictionary of models and their parameter grids"""
+    models = {
+        'SVM Linear': {
+            'model': SVC(random_state=RANDOM_STATE, probability=True),
+            'params': {'kernel': ['linear'], 'C': [0.1, 1, 10, 100]},
+        },
+        'SVM RBF': {
+            'model': SVC(random_state=RANDOM_STATE, probability=True),
+            'params': {'kernel': ['rbf'], 'C': [0.1, 1, 10, 100], 'gamma': ['scale', 'auto', 0.01, 0.1]},
+        },
+        'KNN': {
+            'model': KNeighborsClassifier(),
+            'params': {'n_neighbors': range(3, 15), 'weights': ['uniform', 'distance']},
+        },
+        'Logistic Regression': {
+            'model': LogisticRegression(random_state=RANDOM_STATE),
+            'params': {'C': [0.1, 1, 10], 'penalty': ['l2']},
+        },
+        'Gradient Boosting': {
+            'model': GradientBoostingClassifier(random_state=RANDOM_STATE),
+            'params': {
+                'n_estimators': [50, 100],
+                'learning_rate': [0.01, 0.1, 0.5],
+                'max_depth': [3, 5]
+            },
+        },
+        'Random Forest': {
+            'model': RandomForestClassifier(random_state=RANDOM_STATE),
+            'params': {
+                'n_estimators': [50, 100, 200],
+                'max_depth': [None, 5, 10, 20],
+                'min_samples_split': [2, 5, 10],
+                'min_samples_leaf': [1, 2, 4],
+            },
+        },
     }
 
-    models = {}
-
-    # Load models
-    for name, file in model_files.items():
-        path = os.path.join(MODELS_DIR, file)
-        if os.path.exists(path):
-            with open(path, 'rb') as f:
-                models[name] = pickle.load(f)
-
-    # Load scaler
-    scaler = None
-    scaler_path = os.path.join(MODELS_DIR, 'scaler.pkl')
-    if os.path.exists(scaler_path):
-        with open(scaler_path, 'rb') as f:
-            scaler = pickle.load(f)
-
-    return models, scaler
+    return models
 
 
-def create_feature_sliders(data):
-    input_data = {}
-    stats = data.describe()
+# Train and evaluate model
+def train_model(model, params, X_train, y_train, X_test, y_test):
+    """Train and evaluate a single model"""
+    start_time = time.time()
 
-    st.sidebar.subheader("Highly Correlated Features")
-    st.sidebar.caption("These features have the strongest relationship with diagnosis")
+    grid = GridSearchCV(model, params, cv=5, scoring='accuracy', n_jobs=-1)
+    grid.fit(X_train, y_train)
+    best_model = grid.best_estimator_
 
-    # Create sliders with more extreme default values to see impact
-    for feature in HIGHLY_CORRELATED_FEATURES:
-        if feature in data.columns:
-            min_val = stats[feature]['min']
-            max_val = stats[feature]['max']
-            mean_val = stats[feature]['mean']
+    train_pred = best_model.predict(X_train)
+    test_pred = best_model.predict(X_test)
 
-            # Set default to 25th percentile (more likely benign) or 75th percentile (more likely malignant)
-            default_val = mean_val  # Start with mean as default
+    metrics = {
+        'train_accuracy': accuracy_score(y_train, train_pred),
+        'test_accuracy': accuracy_score(y_test, test_pred),
+        'training_time': time.time() - start_time,
+        'best_params': grid.best_params_,
+        'model': best_model,
+        'classification_report': classification_report(y_test, test_pred, target_names=['Benign', 'Malignant']),
+        'confusion_matrix': confusion_matrix(y_test, test_pred)
+    }
 
-            input_data[feature] = st.sidebar.slider(
-                label=f"⭐ {feature.replace('_', ' ').title()} ⭐",
-                min_value=float(min_val),
-                max_value=float(max_val),
-                value=float(default_val),
-                step=float((max_val - min_val) / 100),
-                key=f"hc_{feature}"
-            )
-
-    return input_data
+    return metrics
 
 
+# Plot functions
+def plot_confusion_matrix(cm, model_name):
+    """Plot a single confusion matrix"""
+    fig, ax = plt.subplots(figsize=(6, 4))
+    cm_norm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+
+    sns.heatmap(cm_norm, annot=True, fmt='.2f', cmap='Blues',
+                xticklabels=['Benign', 'Malignant'],
+                yticklabels=['Benign', 'Malignant'],
+                cbar=False, ax=ax)
+
+    for i in range(cm_norm.shape[0]):
+        for j in range(cm_norm.shape[1]):
+            ax.text(j + 0.5, i + 0.25, f"{cm[i, j]}",
+                    ha='center', va='center', color='black')
+
+    ax.set_title(f'{model_name}', pad=20)
+    ax.set_ylabel('True Label')
+    ax.set_xlabel('Predicted Label')
+    return fig
+
+
+def plot_roc_curve(models, X_test, y_test):
+    """Plot ROC curves for all models"""
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot([0, 1], [0, 1], 'k--')
+
+    for name, model in models.items():
+        if hasattr(model, "predict_proba"):
+            probas = model.predict_proba(X_test)
+            fpr, tpr, thresholds = roc_curve(y_test, probas[:, 1])
+            roc_auc = auc(fpr, tpr)
+            ax.plot(fpr, tpr, label=f'{name} (AUC = {roc_auc:.2f})')
+
+    ax.set_xlabel('False Positive Rate')
+    ax.set_ylabel('True Positive Rate')
+    ax.set_title('ROC Curves')
+    ax.legend(loc="lower right")
+    return fig
+
+
+# Main function
 def main():
-    st.set_page_config(layout="wide")
-    st.title("Breast Cancer Prediction App")
-    st.write("""
-    This app predicts whether a breast tumor is **malignant (M)** or **benign (B)** using multiple machine learning algorithms.
-    Adjust the sliders to see how different feature values affect the prediction.
+    st.title("Breast Cancer Classification")
+    st.markdown("""
+    This app uses machine learning to classify breast cancer tumors as benign or malignant 
+    using only the most highly correlated features.
     """)
 
-    # Load data and models
+    # Load data
     data = load_data()
-    models, scaler = load_models_and_scaler()
-
-    if not models:
-        st.error("No trained models found. Please train models first.")
-        return
-    if scaler is None:
-        st.error(
-            "Scaler not found. Please ensure you have a scaler.pkl file in your saved_models/all_features directory.")
+    if data is None:
         return
 
-    # Create input sliders in sidebar
-    input_data = create_feature_sliders(data)
+    # Split data
+    X = data.drop(['diagnosis'], axis=1)
+    y = data['diagnosis']
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE
+    )
 
-    # Main content area
-    col1, col2 = st.columns([3, 2])
+    # Scale data
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
 
-    with col1:
-        st.header("Model Information")
-        st.write("The following models are available for prediction:")
-        model_df = pd.DataFrame({
-            "Model": list(models.keys()),
-            "Type": ["Ensemble", "Neighbors", "Ensemble", "Linear",
-                     "Ensemble", "SVM", "SVM"]
-        })
-        st.dataframe(model_df, use_container_width=True, hide_index=True)
+    # Train models
+    if st.button("Train All Models"):
+        st.info("Training models with hyperparameter tuning... This may take a few minutes.")
 
-    with col2:
-        st.header("Key Features Info")
-        st.write("These features are most important for diagnosis:")
-        hc_features_df = pd.DataFrame({
-            "Feature": HIGHLY_CORRELATED_FEATURES,
-            "Importance": ["High"] * len(HIGHLY_CORRELATED_FEATURES)
-        })
-        st.dataframe(hc_features_df, use_container_width=True, hide_index=True)
+        models = get_models()
+        results = []
+        trained_models = {}
 
-    # Display user inputs
-    st.subheader("Your Input Values")
-    st.dataframe(pd.DataFrame([input_data]).style.format("{:.2f}"), use_container_width=True)
+        progress_bar = st.progress(0)
+        status_text = st.empty()
 
-    # Make predictions
-    if st.button("Predict Diagnosis", type="primary", use_container_width=True):
-        # Prepare input dataframe with only the features we have sliders for
-        input_df = pd.DataFrame([input_data])
+        for i, (name, model_def) in enumerate(models.items()):
+            status_text.text(f"Training {name}...")
 
+            metrics = train_model(
+                model_def['model'],
+                model_def['params'],
+                X_train_scaled,
+                y_train,
+                X_test_scaled,
+                y_test
+            )
+
+            results.append({
+                'Model': name,
+                'Train Accuracy': metrics['train_accuracy'],
+                'Test Accuracy': metrics['test_accuracy'],
+                'Training Time (s)': metrics['training_time']
+            })
+
+            trained_models[name] = metrics['model']
+
+            # Save model
+            with open(os.path.join(MODEL_SAVE_PATH, f"{name.lower().replace(' ', '_')}.pkl"), 'wb') as f:
+                pickle.dump(metrics['model'], f)
+
+            progress_bar.progress((i + 1) / len(models))
+
+        # Save scaler
+        with open(os.path.join(MODEL_SAVE_PATH, 'scaler.pkl'), 'wb') as f:
+            pickle.dump(scaler, f)
+
+        status_text.text("Training complete!")
+
+        # Show results
+        st.subheader("Model Performance")
+        results_df = pd.DataFrame(results).sort_values('Test Accuracy', ascending=False)
+        st.dataframe(results_df.style.format({
+            'Train Accuracy': '{:.2%}',
+            'Test Accuracy': '{:.2%}',
+            'Training Time (s)': '{:.2f}'
+        }))
+
+        # Show best model
+        best_model_name = results_df.iloc[0]['Model']
+        st.success(f"Best model: {best_model_name} with test accuracy of {results_df.iloc[0]['Test Accuracy']:.2%}")
+
+        # Show classification report for best model
+        st.subheader(f"Classification Report for {best_model_name}")
+        best_model = trained_models[best_model_name]
+        y_pred = best_model.predict(X_test_scaled)
+        st.text(classification_report(y_test, y_pred, target_names=['Benign', 'Malignant']))
+
+        # Confusion matrices in a horizontal layout
+        st.subheader("Model Confusion Matrices")
+        cols = st.columns(len(trained_models))
+        for (name, model), col in zip(trained_models.items(), cols):
+            with col:
+                y_pred = model.predict(X_test_scaled)
+                cm = confusion_matrix(y_test, y_pred)
+                fig = plot_confusion_matrix(cm, name)
+                st.pyplot(fig)
+
+        # ROC curve
+        st.subheader("ROC Curves")
+        roc_fig = plot_roc_curve(trained_models, X_test_scaled, y_test)
+        st.pyplot(roc_fig)
+
+        # Feature correlations
+        st.subheader("Feature Correlations")
+        corr_fig, ax = plt.subplots(figsize=(10, 8))
+        sns.heatmap(data.corr(), annot=True, fmt='.2f', cmap='coolwarm', ax=ax)
+        st.pyplot(corr_fig)
+
+    # Prediction interface
+    st.sidebar.header("Feature Input")
+    st.sidebar.info("Adjust the sliders to input feature values")
+
+    # Create sliders for each feature in two columns
+    col1, col2 = st.sidebar.columns(2)
+    input_features = {}
+
+    for i, feature in enumerate(HIGHLY_CORR_FEATURES):
+        if feature in X.columns:
+            # Alternate between columns for better layout
+            if i % 2 == 0:
+                with col1:
+                    input_features[feature] = st.slider(
+                        f"{feature}",
+                        min_value=float(X[feature].min()),
+                        max_value=float(X[feature].max()),
+                        value=float(X[feature].median()),
+                        step=0.01
+                    )
+            else:
+                with col2:
+                    input_features[feature] = st.slider(
+                        f"{feature}",
+                        min_value=float(X[feature].min()),
+                        max_value=float(X[feature].max()),
+                        value=float(X[feature].median()),
+                        step=0.01
+                    )
+
+    if st.sidebar.button("Predict Diagnosis"):
         try:
-            # Get the intersection of features we have and features the scaler expects
-            available_features = [f for f in input_df.columns if f in scaler.feature_names_in_]
-            input_df = input_df[available_features]
+            # Load models if not already trained
+            models = {}
+            for model_file in os.listdir(MODEL_SAVE_PATH):
+                if model_file.endswith('.pkl') and model_file != 'scaler.pkl':
+                    model_name = model_file.replace('.pkl', '').replace('_', ' ').title()
+                    with open(os.path.join(MODEL_SAVE_PATH, model_file), 'rb') as f:
+                        models[model_name] = pickle.load(f)
 
-            # Add any missing features with their mean values
-            stats = data.describe()
-            missing_features = [f for f in scaler.feature_names_in_ if f not in input_df.columns]
-            for feature in missing_features:
-                input_df[feature] = stats[feature]['mean']
+            # Load scaler
+            with open(os.path.join(MODEL_SAVE_PATH, 'scaler.pkl'), 'rb') as f:
+                scaler = pickle.load(f)
 
-            # Reorder columns to match scaler's expected order
-            input_df = input_df[scaler.feature_names_in_]
-            input_scaled = scaler.transform(input_df)
+            # Prepare input data
+            input_data = pd.DataFrame([input_features])
+            input_scaled = scaler.transform(input_data)
 
-            # Debug: Show scaled values being used
-            with st.expander("Debug: Scaled Feature Values"):
-                st.write("These are the scaled values being sent to the models:")
-                scaled_df = pd.DataFrame(input_scaled, columns=scaler.feature_names_in_)
-                st.dataframe(scaled_df.style.format("{:.2f}"))
+            # Make predictions
+            st.subheader("Prediction Results")
 
-                # Show feature means for comparison
-                st.write("Feature means from training data:")
-                means = pd.DataFrame([stats.loc['mean']]).drop('diagnosis', axis=1)
-                st.dataframe(means[scaler.feature_names_in_].style.format("{:.2f}"))
+            # Create a results table
+            results_data = []
+            for name, model in models.items():
+                prediction = model.predict(input_scaled)[0]
+                proba = model.predict_proba(input_scaled)[0]
+
+                diagnosis = "Malignant" if prediction == 1 else "Benign"
+                confidence = proba[1] if prediction == 1 else proba[0]
+
+                results_data.append({
+                    "Model": name,
+                    "Diagnosis": diagnosis,
+                    "Confidence": f"{confidence:.1%}",
+                    "Malignant Probability": f"{proba[1]:.1%}",
+                    "Benign Probability": f"{proba[0]:.1%}"
+                })
+
+            # Convert to DataFrame and display
+            results_df = pd.DataFrame(results_data)
+
+            # Style the DataFrame
+            def color_diagnosis(val):
+                color = 'red' if val == 'Malignant' else 'green'
+                return f'color: {color}; font-weight: bold'
+
+            styled_df = results_df.style.applymap(color_diagnosis, subset=['Diagnosis'])
+
+            # Display in the center
+            st.table(styled_df)
 
         except Exception as e:
-            st.error(f"Feature processing error: {str(e)}")
-            st.error(f"Expected features: {scaler.feature_names_in_}")
-            st.error(f"Provided features: {input_df.columns.tolist()}")
-            return
-
-        st.subheader("Model Predictions")
-
-        # Create prediction results
-        predictions = []
-        for model_name, model in models.items():
-            try:
-                pred = model.predict(input_scaled)[0]
-                if hasattr(model, "predict_proba"):
-                    proba = model.predict_proba(input_scaled)[0]
-                    confidence = max(proba)
-                    benign_prob = proba[0]
-                    malignant_prob = proba[1]
-                else:
-                    confidence = 1.0
-                    benign_prob = 0.0 if pred == 1 else 1.0
-                    malignant_prob = 1.0 if pred == 1 else 0.0
-
-                predictions.append({
-                    'Model': model_name,
-                    'Prediction': 'Malignant' if pred == 1 else 'Benign',
-                    'Confidence': f"{confidence * 100:.1f}%",
-                    'Benign Probability': f"{benign_prob * 100:.1f}%",
-                    'Malignant Probability': f"{malignant_prob * 100:.1f}%"
-                })
-            except Exception as e:
-                st.warning(f"Error with {model_name}: {str(e)}")
-                continue
-
-        # Display predictions
-        if predictions:
-            pred_df = pd.DataFrame(predictions)
-            st.dataframe(pred_df, use_container_width=True)
-
-            # Calculate consensus
-            final_pred = np.mean([1 if p['Prediction'] == 'Malignant' else 0 for p in predictions])
-            confidence = np.mean([float(p['Confidence'].strip('%')) / 100 for p in predictions])
-
-            st.subheader("Final Consensus Prediction")
-            if final_pred > 0.5:
-                st.error(f"## Consensus: Malignant (M) with {confidence * 100:.1f}% confidence")
-                st.warning("""
-                **Clinical Recommendation:** 
-                The models suggest a high probability of malignancy. 
-                Please consult with an oncologist immediately for further evaluation.
-                """)
-            else:
-                st.success(f"## Consensus: Benign (B) with {confidence * 100:.1f}% confidence")
-                st.info("""
-                **Clinical Recommendation:** 
-                The models suggest a high probability of benign tumor. 
-                Regular monitoring is still recommended.
-                """)
-
-            # Show feature importance for tree-based models
-            st.subheader("Feature Importance (Random Forest)")
-            if 'Random Forest' in models:
-                try:
-                    importances = models['Random Forest'].feature_importances_
-                    importance_df = pd.DataFrame({
-                        'Feature': input_df.columns,
-                        'Importance': importances
-                    }).sort_values('Importance', ascending=False)
-
-                    st.bar_chart(importance_df.set_index('Feature'))
-
-                    # Show which features were adjusted by the user
-                    importance_df['User Adjusted'] = importance_df['Feature'].isin(HIGHLY_CORRELATED_FEATURES)
-                    st.write("Features highlighted in yellow were adjusted in the sidebar:")
-                    st.dataframe(importance_df.style.apply(
-                        lambda x: ['background: yellow' if x['User Adjusted'] else '' for i in x],
-                        axis=1
-                    ))
-                except Exception as e:
-                    st.warning(f"Could not display feature importance: {str(e)}")
-        else:
-            st.error("No models produced valid predictions.")
+            st.error(f"Error making prediction: {str(e)}")
+            st.info("Please train the models first by clicking the 'Train All Models' button.")
 
 
 if __name__ == "__main__":
