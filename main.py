@@ -5,8 +5,15 @@ import pickle
 from preprocessing.preprocessing import load_data, feature_selection, prepare_data, scale_data
 from models.model_definitions import get_models
 from models.model_utils import evaluate_model
-from visualization.plots import plot_metrics_comparison, plot_learning_curves, plot_confusion_matrices, \
-    plot_feature_correlations, plot_feature_importances, plot_roc_curves
+from visualization.plots import (
+    plot_metrics_comparison,
+    plot_learning_curves,
+    plot_confusion_matrices,
+    plot_feature_correlations,
+    plot_feature_importances,
+    plot_roc_curves,
+    plot_accuracy_comparison
+)
 from config import settings
 
 
@@ -78,11 +85,13 @@ def print_results(results):
 
 
 def main():
-    # Create output directories if they don't exist
+    # Create all necessary directories at the start
     os.makedirs('output', exist_ok=True)
-    os.makedirs('saved_models/all_features', exist_ok=True)  # Ensure this directory exists
+    os.makedirs('saved_models/all_features', exist_ok=True)
+    os.makedirs('saved_models/high_corr_features', exist_ok=True)
+    os.makedirs('dataset', exist_ok=True)  # Ensure dataset directory exists
 
-    # Get model definitions first
+    # Get model definitions
     model_definitions = get_models()
 
     # Load and preprocess data
@@ -96,52 +105,42 @@ def main():
         data, high_corr_features = feature_selection(data)
         print("\nFeature correlations with target:")
         print(data.corr()['diagnosis'].abs().sort_values(ascending=False))
-
         print("\nHighly correlated features selected:")
         print(high_corr_features)
     except Exception as e:
         print(f"Error during feature selection: {str(e)}")
         return
 
-    # Plot feature correlations if we have features
+    # Plot feature correlations
     if high_corr_features:
         try:
-            # Ensure we only plot features that exist in the dataframe
             existing_features = [f for f in high_corr_features if f in data.columns]
             if existing_features:
                 corr_fig = plot_feature_correlations(data, existing_features)
                 corr_fig.savefig('output/feature_correlations.png', bbox_inches='tight')
                 plt.close(corr_fig)
                 print("\nSaved feature correlation plot to output/feature_correlations.png")
-            else:
-                print("\nNo existing features found for correlation plot")
         except Exception as e:
             print(f"Error plotting feature correlations: {str(e)}")
-    else:
-        print("\nNo highly correlated features found - skipping correlation plot")
 
     # Prepare data with all features
     try:
         X_train, X_test, y_train, y_test = prepare_data(data)
-        X_train_scaled, X_test_scaled, scaler = scale_data(X_train, X_test)  # Get the scaler object
+        X_train_scaled, X_test_scaled, scaler = scale_data(X_train, X_test)
     except Exception as e:
         print(f"Error preparing all-features data: {str(e)}")
         return
 
-    # Prepare data with only highly correlated features (if any exist)
-    results_hc = []
-    models_hc = {}
-
+    # Train on highly correlated features if available
+    results_hc, models_hc = [], {}
     if high_corr_features:
         try:
-            # Ensure we only use features that exist in the dataframe
             existing_features = [f for f in high_corr_features if f in data.columns]
             if existing_features:
                 high_corr_data = data[existing_features + ['diagnosis']]
                 X_train_hc, X_test_hc, y_train_hc, y_test_hc = prepare_data(high_corr_data)
                 X_train_hc_scaled, X_test_hc_scaled, scaler_hc = scale_data(X_train_hc, X_test_hc)
 
-                # Train and evaluate models on highly correlated features only
                 print("\n=== Training on highly correlated features only ===")
                 results_hc, models_hc = train_and_evaluate_models(
                     model_definitions,
@@ -150,18 +149,11 @@ def main():
                     X_test_hc_scaled,
                     y_test_hc
                 )
-                # Save models trained on highly correlated features
                 save_models_and_scaler(models_hc, scaler_hc, 'saved_models/high_corr_features')
-            else:
-                print("\nNo existing highly correlated features - skipping this training")
         except Exception as e:
             print(f"Error processing highly correlated features: {str(e)}")
-            results_hc = []
-            models_hc = {}
-    else:
-        print("\nNo highly correlated features - skipping training on subset")
 
-    # Train and evaluate models on all features
+    # Train on all features
     print("\n=== Training on all features ===")
     results_all, models_all = train_and_evaluate_models(
         model_definitions,
@@ -170,11 +162,9 @@ def main():
         X_test_scaled,
         y_test
     )
-
-    # Save models trained on all features AND the scaler
     save_models_and_scaler(models_all, scaler, 'saved_models/all_features')
 
-    # Compare results
+    # Print results
     print("\n=== Performance Comparison ===")
     print("\nAll features:")
     print_results(results_all)
@@ -182,50 +172,51 @@ def main():
     if results_hc:
         print("\nHighly correlated features only:")
         print_results(results_hc)
-    else:
-        print("\nNo results for highly correlated features")
 
-    # Print detailed classification reports
+    # Print detailed reports
     print("\n=== Detailed Classification Reports ===")
     for result in results_all:
         print(f"\n{result['model']}:")
         print(f"Best params: {result['best_params']}")
-        if 'classification_report' in result:
-            print("Classification Report:")
-            print(result['classification_report'])
-        else:
-            print("No classification report available")
+        print(result.get('classification_report', 'No classification report available'))
         print(f"Training time: {result['training_time']:.2f} seconds")
         print("-" * 80)
 
-    # Generate all visualizations
+    # Generate visualizations
     try:
-        # Performance comparison plot (if we have both sets of results)
+        # Performance comparison
         if results_all and results_hc:
             comparison_fig = plot_metrics_comparison(results_all, results_hc)
             comparison_fig.savefig('output/performance_comparison.png', bbox_inches='tight')
             plt.close(comparison_fig)
-            print("\nSaved performance comparison plot to output/performance_comparison.png")
 
-        # Learning curves for all models
+        # Learning curves
         learning_curve_fig = plot_learning_curves(models_all, X_train_scaled, y_train)
         learning_curve_fig.savefig('output/learning_curves_all.png', bbox_inches='tight')
         plt.close(learning_curve_fig)
-        print("Saved learning curves plot to output/learning_curves_all.png")
 
-        # Confusion matrices for all models
+        # Confusion matrices
         confusion_matrix_fig = plot_confusion_matrices(models_all, X_test_scaled, y_test)
         confusion_matrix_fig.savefig('output/confusion_matrices_all.png', bbox_inches='tight')
         plt.close(confusion_matrix_fig)
-        print("Saved confusion matrices plot to output/confusion_matrices_all.png")
 
-        # Feature importance for tree-based models
+        # Feature importance
         plot_feature_importances(models_all, X_train.columns)
 
+        # ROC curves
         plot_roc_curves(models_all, X_test_scaled, y_test)
 
+        # Accuracy comparison
+        accuracy_fig = plot_accuracy_comparison(results_all)
+        accuracy_fig.savefig('output/accuracy_comparison.png', bbox_inches='tight')
+        plt.close(accuracy_fig)
+
+        print("\nAll visualizations saved to output directory")
+
     except Exception as e:
-        print(f"Error generating visualizations: {str(e)}")
+        print(f"\nError generating visualizations: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
