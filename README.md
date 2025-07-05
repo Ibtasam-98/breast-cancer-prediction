@@ -2,7 +2,7 @@
 
 A machine learning web application that predicts breast cancer tumors as benign or malignant with **92.1% accuracy**, built with Streamlit and Scikit-learn.
 
-## 🌟 Features
+## Features
 
 - **Multiple ML Algorithms**:
   - SVM (Linear & RBF kernels) - Best accuracy (92.1%)
@@ -11,13 +11,14 @@ A machine learning web application that predicts breast cancer tumors as benign 
   - Random Forest
   - Logistic Regression
   - Stacking Ensemble
+  - Stochastic gradient descent classifier
 
 - **Interactive Dashboard**:
   - Real-time predictions with probability scores
   - Interactive feature sliders
   - Performance comparison of all models
 
-## 🛠️ Installation
+## 🛠Installation
 
 1. Clone the repository:
 ```bash
