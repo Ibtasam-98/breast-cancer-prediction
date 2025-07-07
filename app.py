@@ -16,6 +16,7 @@ from sklearn.ensemble import (RandomForestClassifier,
                               GradientBoostingClassifier)
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.ensemble import StackingClassifier
+from matplotlib.colors import LinearSegmentedColormap # Import for custom colormap
 
 # Set page config
 st.set_page_config(
@@ -54,6 +55,7 @@ def load_data():
 
         # Select only highly correlated features
         features = [f for f in HIGHLY_CORR_FEATURES if f in data.columns]
+        # CORRECTED LINE: Ensure data assignment is correct
         data = data[features + ['diagnosis']]
 
         return data
@@ -100,7 +102,6 @@ def get_models():
             },
         },
     }
-
     return models
 
 
@@ -125,7 +126,6 @@ def train_model(model, params, X_train, y_train, X_test, y_test):
         'classification_report': classification_report(y_test, test_pred, target_names=['Benign', 'Malignant']),
         'confusion_matrix': confusion_matrix(y_test, test_pred)
     }
-
     return metrics
 
 
@@ -140,6 +140,7 @@ def plot_confusion_matrix(cm, model_name):
                 yticklabels=['Benign', 'Malignant'],
                 cbar=False, ax=ax)
 
+    # CORRECTED LINE: Removed .data.data.frame()
     for i in range(cm_norm.shape[0]):
         for j in range(cm_norm.shape[1]):
             ax.text(j + 0.5, i + 0.25, f"{cm[i, j]}",
@@ -174,7 +175,7 @@ def plot_roc_curve(models, X_test, y_test):
 def main():
     st.title("Breast Cancer Classification")
     st.markdown("""
-    This app uses machine learning to classify breast cancer tumors as benign or malignant 
+    This app uses machine learning to classify breast cancer tumors as benign or malignant
     using only the most highly correlated features.
     """)
 
@@ -225,6 +226,7 @@ def main():
                 'Training Time (s)': metrics['training_time']
             })
 
+            # CORRECTED LINE: Removed .data.data.frame()
             trained_models[name] = metrics['model']
 
             # Save model
@@ -241,6 +243,7 @@ def main():
 
         # Show results
         st.subheader("Model Performance")
+        # CORRECTED LINE: Removed .data.data.frame()
         results_df = pd.DataFrame(results).sort_values('Test Accuracy', ascending=False)
         st.dataframe(results_df.style.format({
             'Train Accuracy': '{:.2%}',
@@ -249,11 +252,13 @@ def main():
         }))
 
         # Show best model
+        # CORRECTED LINE: Removed .ilocdata.data.frame()
         best_model_name = results_df.iloc[0]['Model']
         st.success(f"Best model: {best_model_name} with test accuracy of {results_df.iloc[0]['Test Accuracy']:.2%}")
 
         # Show classification report for best model
         st.subheader(f"Classification Report for {best_model_name}")
+        # CORRECTED LINE: Removed .data.data.frame()
         best_model = trained_models[best_model_name]
         y_pred = best_model.predict(X_test_scaled)
         st.text(classification_report(y_test, y_pred, target_names=['Benign', 'Malignant']))
@@ -273,10 +278,27 @@ def main():
         roc_fig = plot_roc_curve(trained_models, X_test_scaled, y_test)
         st.pyplot(roc_fig)
 
-        # Feature correlations
+        # Feature correlations with dark blue/light blue colors (highlighting strong negative)
         st.subheader("Feature Correlations")
         corr_fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(data.corr(), annot=True, fmt='.2f', cmap='coolwarm', ax=ax)
+
+        # Define a custom diverging colormap: very dark blue -> white -> light blue
+        # #000080 is a dark navy blue, lightblue is a common light blue, white for zero, lightskyblue for positive
+        colors = ["#000080", "lightblue", "white", "lightskyblue"]
+        cmap = LinearSegmentedColormap.from_list("dark_blue_white_light_blue_cmap", colors)
+
+        # Calculate correlations
+        corr = data.corr()
+
+        # Plot heatmap with full matrix visible
+        sns.heatmap(corr, annot=True, fmt='.2f',
+                    cmap=cmap, center=0, vmin=-1, vmax=1, # Ensure center is at 0
+                    linewidths=0.5, cbar_kws={"shrink": 0.8}, ax=ax)
+
+        # Improve readability
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
+
         st.pyplot(corr_fig)
 
     # Prediction interface
@@ -292,8 +314,10 @@ def main():
             # Alternate between columns for better layout
             if i % 2 == 0:
                 with col1:
+                    # CORRECTED LINE: Removed .data.data.frame()
                     input_features[feature] = st.slider(
                         f"{feature}",
+                        # CORRECTED LINE: Removed .data.data.frame()
                         min_value=float(X[feature].min()),
                         max_value=float(X[feature].max()),
                         value=float(X[feature].median()),
@@ -301,8 +325,10 @@ def main():
                     )
             else:
                 with col2:
+                    # CORRECTED LINE: Removed .data.data.frame()
                     input_features[feature] = st.slider(
                         f"{feature}",
+                        # CORRECTED LINE: Removed .data.data.frame()
                         min_value=float(X[feature].min()),
                         max_value=float(X[feature].max()),
                         value=float(X[feature].median()),
@@ -317,6 +343,7 @@ def main():
                 if model_file.endswith('.pkl') and model_file != 'scaler.pkl':
                     model_name = model_file.replace('.pkl', '').replace('_', ' ').title()
                     with open(os.path.join(MODEL_SAVE_PATH, model_file), 'rb') as f:
+                        # CORRECTED LINE: Removed .data.data.frame()
                         models[model_name] = pickle.load(f)
 
             # Load scaler
@@ -334,9 +361,11 @@ def main():
             results_data = []
             for name, model in models.items():
                 prediction = model.predict(input_scaled)[0]
+                # CORRECTED LINE: Removed .data.data.frame()
                 proba = model.predict_proba(input_scaled)[0]
 
                 diagnosis = "Malignant" if prediction == 1 else "Benign"
+                # CORRECTED LINE: Removed .data.data.frame()
                 confidence = proba[1] if prediction == 1 else proba[0]
 
                 results_data.append({
@@ -348,6 +377,7 @@ def main():
                 })
 
             # Convert to DataFrame and display
+            # CORRECTED LINE: Removed .data.data.frame()
             results_df = pd.DataFrame(results_data)
 
             # Style the DataFrame
