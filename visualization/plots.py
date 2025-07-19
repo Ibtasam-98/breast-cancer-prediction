@@ -8,7 +8,6 @@ from sklearn.metrics import roc_curve, auc
 from sklearn.preprocessing import label_binarize
 import os
 
-# Create output directory if it doesn't exist
 os.makedirs('output', exist_ok=True)
 
 # Define blue color palette
