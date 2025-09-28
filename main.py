@@ -2,18 +2,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 import pickle
-from preprocessing.preprocessing import load_data, feature_selection, prepare_data, scale_data
+import numpy as np
+from preprocessing.preprocessing import load_data, prepare_data_enhanced, scale_data_enhanced
 from models.model_definitions import get_models
-from models.model_utils import evaluate_model
-from visualization.plots import (
-    plot_metrics_comparison,
-    plot_learning_curves,
-    plot_confusion_matrices,
-    plot_feature_correlations,
-    plot_feature_importances,
-    plot_roc_curves,
-    plot_accuracy_comparison
-)
+from models.model_utils import evaluate_model_enhanced
+from visualization.plots import save_all_visualizations
 from config import settings
 
 
@@ -26,31 +19,31 @@ def save_models_and_scaler(models, scaler, folder='saved_models'):
         filename = os.path.join(folder, f"{name.lower().replace(' ', '_')}.pkl")
         with open(filename, 'wb') as f:
             pickle.dump(model, f)
-        print(f"Saved model: {filename}")
+        print(f"💾 Saved model: {filename}")
 
     # Save scaler
     scaler_filename = os.path.join(folder, 'scaler.pkl')
     with open(scaler_filename, 'wb') as f:
         pickle.dump(scaler, f)
-    print(f"Saved scaler: {scaler_filename}")
+    print(f"💾 Saved scaler: {scaler_filename}")
 
 
-def train_and_evaluate_models(model_definitions, X_train, y_train, X_test, y_test):
-    """Helper function to train and evaluate models"""
+def train_and_evaluate_selected_models(model_definitions, X_train, y_train, X_test, y_test):
+    """Train and evaluate only the selected models with detailed output"""
     results = []
     trained_models = {}
 
     for name, definition in model_definitions.items():
-        print(f"\nTraining {name}...")
         try:
-            metrics = evaluate_model(
+            metrics = evaluate_model_enhanced(
                 definition['model'],
                 definition['params'],
                 definition.get('learning_rate_param'),
                 X_train,
                 y_train,
                 X_test,
-                y_test
+                y_test,
+                name
             )
 
             results.append({
@@ -60,164 +53,209 @@ def train_and_evaluate_models(model_definitions, X_train, y_train, X_test, y_tes
                 'training_time': metrics['training_time'],
                 'best_params': metrics['best_params'],
                 'learning_rate': metrics.get('learning_rate'),
-                'classification_report': metrics['classification_report']
+                'classification_report': metrics['classification_report'],
+                'confusion_matrix': metrics['confusion_matrix'],
+                'sensitivity': metrics['sensitivity'],
+                'specificity': metrics['specificity'],
+                'precision': metrics['precision']
             })
 
             trained_models[name] = metrics['model']
+
         except Exception as e:
-            print(f"Error training {name}: {str(e)}")
+            print(f"❌ Error training {name}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             continue
 
     return results, trained_models
 
 
-def print_results(results):
-    """Helper function to print results"""
-    if not results:
-        print("No results to display")
-        return
+def print_final_summary(results):
+    """Print comprehensive final summary"""
+    print("\n" + "=" * 80)
+    print("🏆 FINAL PERFORMANCE SUMMARY")
+    print("=" * 80)
 
-    results_df = pd.DataFrame(results)
-    columns_to_display = ['model', 'train_accuracy', 'test_accuracy', 'training_time']
-    if 'learning_rate' in results_df.columns:
-        columns_to_display.append('learning_rate')
-    print(results_df[columns_to_display].sort_values('test_accuracy', ascending=False).to_string(index=False))
+    # Create summary dataframe
+    summary_data = []
+    for result in results:
+        summary_data.append({
+            'Model': result['model'],
+            'Train Acc': result['train_accuracy'],
+            'Test Acc': result['test_accuracy'],
+            'Time (s)': result['training_time'],
+            'Sensitivity': result['sensitivity'],
+            'Specificity': result['specificity'],
+            'Precision': result['precision']
+        })
+
+    df = pd.DataFrame(summary_data)
+    df['Rank'] = df['Test Acc'].rank(method='dense', ascending=False).astype(int)
+    df = df.sort_values('Rank')
+
+    # Format the dataframe for nice printing
+    display_df = df.copy()
+    display_df['Train Acc'] = display_df['Train Acc'].apply(lambda x: f'{x:.4f}')
+    display_df['Test Acc'] = display_df['Test Acc'].apply(lambda x: f'{x:.4f}')
+    display_df['Time (s)'] = display_df['Time (s)'].apply(lambda x: f'{x:.2f}')
+    display_df['Sensitivity'] = display_df['Sensitivity'].apply(lambda x: f'{x:.4f}')
+    display_df['Specificity'] = display_df['Specificity'].apply(lambda x: f'{x:.4f}')
+    display_df['Precision'] = display_df['Precision'].apply(lambda x: f'{x:.4f}')
+
+    print("\n📊 PERFORMANCE RANKING:")
+    print(display_df.to_string(index=False))
+
+    # Find best model
+    best_model = max(results, key=lambda x: x['test_accuracy'])
+    worst_model = min(results, key=lambda x: x['test_accuracy'])
+
+    print(f"\n🎯 BEST PERFORMER: {best_model['model']}")
+    print(f"   Test Accuracy: {best_model['test_accuracy']:.4f} ({best_model['test_accuracy'] * 100:.2f}%)")
+    print(f"   Training Time: {best_model['training_time']:.2f}s")
+
+    print(f"\n📉 WORST PERFORMER: {worst_model['model']}")
+    print(f"   Test Accuracy: {worst_model['test_accuracy']:.4f} ({worst_model['test_accuracy'] * 100:.2f}%)")
+
+    # Calculate statistics
+    test_accuracies = [r['test_accuracy'] for r in results]
+    training_times = [r['training_time'] for r in results]
+
+    print(f"\n📈 OVERALL STATISTICS:")
+    print(f"   Average Test Accuracy: {np.mean(test_accuracies):.4f} ({np.mean(test_accuracies) * 100:.2f}%)")
+    print(f"   Std Test Accuracy:     {np.std(test_accuracies):.4f}")
+    print(f"   Average Training Time: {np.mean(training_times):.2f}s")
+    print(f"   Total Training Time:   {np.sum(training_times):.2f}s")
+
+    print(f"\n🏅 TOP 3 MODELS:")
+    top_3 = sorted(results, key=lambda x: x['test_accuracy'], reverse=True)[:3]
+    for i, model in enumerate(top_3, 1):
+        print(f"   {i}. {model['model']}: {model['test_accuracy']:.4f}")
+
+    print("=" * 80)
 
 
 def main():
-    # Create all necessary directories at the start
+    # Create all necessary directories
     os.makedirs('output', exist_ok=True)
-    os.makedirs('saved_models/all_features', exist_ok=True)
-    os.makedirs('saved_models/high_corr_features', exist_ok=True)
-    os.makedirs('dataset', exist_ok=True)  # Ensure dataset directory exists
+    os.makedirs('saved_models', exist_ok=True)
+    os.makedirs('dataset', exist_ok=True)
 
-    # Get model definitions
+    # Set better plotting style
+    plt.style.use('seaborn-v0_8-whitegrid')
+
+    print("=" * 80)
+    print("🧠 BREAST CANCER PREDICTION - SELECTED MODELS ONLY")
+    print("=" * 80)
+    print("SELECTED MODELS: XGBoost, Random Forest Optimized, Neural Network,")
+    print("                 AdaBoost, SVM RBF Optimized, Stacking Enhanced,")
+    print("                 SGD Classifier")
+    print("=" * 80)
+
+    # Get selected model definitions
     model_definitions = get_models()
+    print(f"\n📋 LOADED {len(model_definitions)} MODELS:")
+    for i, model_name in enumerate(model_definitions.keys(), 1):
+        print(f"   {i}. {model_name}")
 
     # Load and preprocess data
     try:
+        print("\n📊 LOADING DATASET...")
         data = load_data('dataset/breast-cancer.csv')
+        print(f"   Dataset shape: {data.shape}")
+        print(f"   Features: {len(data.columns) - 1}")
+        print(f"   Target distribution:")
+        print(f"     Benign (0): {len(data[data['diagnosis'] == 0])}")
+        print(f"     Malignant (1): {len(data[data['diagnosis'] == 1])}")
     except Exception as e:
-        print(f"Error loading data: {str(e)}")
+        print(f"❌ Error loading data: {str(e)}")
         return
 
+    # Prepare data
     try:
-        data, high_corr_features = feature_selection(data)
-        print("\nFeature correlations with target:")
-        print(data.corr()['diagnosis'].abs().sort_values(ascending=False))
-        print("\nHighly correlated features selected:")
-        print(high_corr_features)
+        print("\n🔄 PREPARING DATA...")
+        X_train, X_test, y_train, y_test = prepare_data_enhanced(data)
+        print(f"   Training set: {X_train.shape}")
+        print(f"   Testing set:  {X_test.shape}")
+
+        # Use standard scaling
+        X_train_scaled, X_test_scaled, scaler = scale_data_enhanced(X_train, X_test, method='standard')
+        print("   ✅ Data scaled using StandardScaler")
+
     except Exception as e:
-        print(f"Error during feature selection: {str(e)}")
+        print(f"❌ Error preparing data: {str(e)}")
         return
 
-    # Plot feature correlations
-    if high_corr_features:
-        try:
-            existing_features = [f for f in high_corr_features if f in data.columns]
-            if existing_features:
-                corr_fig = plot_feature_correlations(data, existing_features)
-                corr_fig.savefig('output/feature_correlations.png', bbox_inches='tight')
-                plt.close(corr_fig)
-                print("\nSaved feature correlation plot to output/feature_correlations.png")
-        except Exception as e:
-            print(f"Error plotting feature correlations: {str(e)}")
+    # Train selected models
+    print("\n" + "=" * 80)
+    print("🚀 STARTING MODEL TRAINING")
+    print("=" * 80)
 
-    # Prepare data with all features
-    try:
-        X_train, X_test, y_train, y_test = prepare_data(data)
-        X_train_scaled, X_test_scaled, scaler = scale_data(X_train, X_test)
-    except Exception as e:
-        print(f"Error preparing all-features data: {str(e)}")
-        return
-
-    # Train on highly correlated features if available
-    results_hc, models_hc = [], {}
-    if high_corr_features:
-        try:
-            existing_features = [f for f in high_corr_features if f in data.columns]
-            if existing_features:
-                high_corr_data = data[existing_features + ['diagnosis']]
-                X_train_hc, X_test_hc, y_train_hc, y_test_hc = prepare_data(high_corr_data)
-                X_train_hc_scaled, X_test_hc_scaled, scaler_hc = scale_data(X_train_hc, X_test_hc)
-
-                print("\n=== Training on highly correlated features only ===")
-                results_hc, models_hc = train_and_evaluate_models(
-                    model_definitions,
-                    X_train_hc_scaled,
-                    y_train_hc,
-                    X_test_hc_scaled,
-                    y_test_hc
-                )
-                save_models_and_scaler(models_hc, scaler_hc, 'saved_models/high_corr_features')
-        except Exception as e:
-            print(f"Error processing highly correlated features: {str(e)}")
-
-    # Train on all features
-    print("\n=== Training on all features ===")
-    results_all, models_all = train_and_evaluate_models(
+    results, trained_models = train_and_evaluate_selected_models(
         model_definitions,
         X_train_scaled,
         y_train,
         X_test_scaled,
         y_test
     )
-    save_models_and_scaler(models_all, scaler, 'saved_models/all_features')
 
-    # Print results
-    print("\n=== Performance Comparison ===")
-    print("\nAll features:")
-    print_results(results_all)
+    # Save models
+    save_models_and_scaler(trained_models, scaler, 'saved_models')
 
-    if results_hc:
-        print("\nHighly correlated features only:")
-        print_results(results_hc)
-
-    # Print detailed reports
-    print("\n=== Detailed Classification Reports ===")
-    for result in results_all:
-        print(f"\n{result['model']}:")
-        print(f"Best params: {result['best_params']}")
-        print(result.get('classification_report', 'No classification report available'))
-        print(f"Training time: {result['training_time']:.2f} seconds")
-        print("-" * 80)
+    # Print final summary
+    print_final_summary(results)
 
     # Generate visualizations
     try:
-        # Performance comparison
-        if results_all and results_hc:
-            comparison_fig = plot_metrics_comparison(results_all, results_hc)
-            comparison_fig.savefig('output/performance_comparison.png', bbox_inches='tight')
-            plt.close(comparison_fig)
-
-        # Learning curves
-        learning_curve_fig = plot_learning_curves(models_all, X_train_scaled, y_train)
-        learning_curve_fig.savefig('output/learning_curves_all.png', bbox_inches='tight')
-        plt.close(learning_curve_fig)
-
-        # Confusion matrices
-        confusion_matrix_fig = plot_confusion_matrices(models_all, X_test_scaled, y_test)
-        confusion_matrix_fig.savefig('output/confusion_matrices_all.png', bbox_inches='tight')
-        plt.close(confusion_matrix_fig)
-
-        # Feature importance
-        plot_feature_importances(models_all, X_train.columns)
-
-        # ROC curves
-        plot_roc_curves(models_all, X_test_scaled, y_test)
-
-        # Accuracy comparison
-        accuracy_fig = plot_accuracy_comparison(results_all)
-        accuracy_fig.savefig('output/accuracy_comparison.png', bbox_inches='tight')
-        plt.close(accuracy_fig)
-
-        print("\nAll visualizations saved to output directory")
-
+        save_all_visualizations(trained_models, results, X_train_scaled, y_train, X_test_scaled, y_test)
     except Exception as e:
-        print(f"\nError generating visualizations: {str(e)}")
+        print(f"❌ Error generating visualizations: {str(e)}")
         import traceback
         traceback.print_exc()
+
+    print("\n" + "=" * 80)
+    print("✅ PIPELINE COMPLETED SUCCESSFULLY!")
+    print("=" * 80)
+    print("📁 Outputs saved in:")
+    print("   - Terminal: Detailed training logs and performance metrics")
+    print("   - output/: Comprehensive visualizations")
+    print("   - saved_models/: Trained models and scaler")
+    print("=" * 80)
 
 
 if __name__ == "__main__":
     main()
+
+
+#
+#
+# \begin{table*}[t]
+# \centering
+# \caption{Comparative Analysis of Breast Cancer Prediction Performance}
+# \label{tab:comparison}
+# \begin{tabular}{p{3.2cm}ccp{2.5cm}}
+# \toprule
+# \textbf{Study / Model} & \textbf{Accuracy (\%)} & \textbf{Best Model} & \textbf{Dataset} \\
+# \midrule
+# \textbf{Our Study} & & & \\
+# \quad SGD Classifier & \textbf{98.25} & SGD & WDBC \\
+# \quad XGBoost & \textbf{97.37} & XGBoost & WDBC \\
+# \quad AdaBoost & \textbf{97.37} & AdaBoost & WDBC \\
+# \quad SVM RBF Optimized & \textbf{97.37} & SVM & WDBC \\
+# \quad Random Forest Optimized & \textbf{96.49} & RF & WDBC \\
+# \quad Stacking Enhanced & \textbf{96.49} & Ensemble & WDBC \\
+# \quad Neural Network & \textbf{93.86} & NN & WDBC \\
+# \midrule
+# \textbf{Literature Review} & & & \\
+# \quad Rawal and Ramik (2020) & 97.10 & Random Forest & WBCD \\
+# \quad Chen et al. (2023) & 97.20 & XGBoost & WDBC \\
+# \quad La et al. (2025) & 91.67 & Logistic Regression & Clinical Data \\
+# \quad Naji et al. (2021) & 96.80 & SVM & WDBC \\
+# \quad Sumbaly et al. (2014) & 93.56 & Decision Tree (J48) & WBCD \\
+# \quad Li and Chen (2018) & 96.50 & Random Forest & WBCD+BCCD \\
+# \quad Banu et al. (2025) & 86.34 & SVM & Mammography \\
+# \quad Kavitha et al. (2025) & 96.00 & YOLOv3 & Ultrasound \\
+# \quad Tanveer et al. (2025) & 95.80 & CNN & MIAS+DDSM \\
+# \bottomrule
+# \end{tabular}
+# \end{table*}
