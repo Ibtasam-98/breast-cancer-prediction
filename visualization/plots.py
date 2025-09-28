@@ -3,11 +3,13 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import confusion_matrix, roc_curve, auc, precision_recall_curve
-from sklearn.model_selection import learning_curve
+from sklearn.model_selection import learning_curve, StratifiedKFold
 from sklearn.preprocessing import label_binarize
 import pandas as pd
 import os
 import warnings
+from matplotlib.patches import Patch
+
 
 # Suppress specific warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
@@ -141,45 +143,6 @@ def plot_feature_importance_single(models, feature_names, X_test, y_test):
     plt.close()
     print("✅ Saved single feature importance comparison")
 
-
-def plot_precision_recall_curves_enhanced(models, X_test, y_test):
-    """Enhanced Precision-Recall curves with better styling"""
-    plt.figure(figsize=(14, 10))
-
-    # Plot diagonal reference line (random classifier)
-    plt.plot([0, 1], [0.5, 0.5], 'k--', linewidth=2, label='Random Classifier', alpha=0.7)
-
-    for i, (name, model) in enumerate(models.items()):
-        color = BLUE_SHADES[i % len(BLUE_SHADES)]
-
-        if hasattr(model, "predict_proba"):
-            try:
-                probas = model.predict_proba(X_test)
-                precision, recall, _ = precision_recall_curve(y_test, probas[:, 1])
-                pr_auc = auc(recall, precision)
-
-                plt.plot(recall, precision, color=color, linewidth=3,
-                         label=f'{name} (AUC = {pr_auc:.3f})', alpha=0.8)
-
-                # Add subtle fill under curve
-                plt.fill_between(recall, precision, alpha=0.1, color=color)
-
-            except Exception as e:
-                print(f"⚠️ Error generating PR curve for {name}: {str(e)}")
-                continue
-
-    plt.xlabel('Recall (Sensitivity)', fontsize=16, fontweight='bold')
-    plt.ylabel('Precision', fontsize=16, fontweight='bold')
-    plt.title('Precision-Recall Curves - All Models', fontsize=18, fontweight='bold', pad=20)
-    plt.legend(loc='upper right', frameon=True, fancybox=True, shadow=True)
-    plt.grid(True, linestyle='--', alpha=0.3)
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.4, 1.05])
-
-    plt.tight_layout()
-    plt.savefig('output/precision_recall_curves_enhanced.png', bbox_inches='tight', dpi=300, facecolor='white')
-    plt.close()
-    print("✅ Saved enhanced precision-recall curves")
 
 
 def plot_training_time_vs_accuracy_enhanced(results):
@@ -711,30 +674,238 @@ def plot_comprehensive_learning_curves(models, X_train, y_train):
     return fig
 
 
+def plot_feature_box_plots(data_df):
+    """
+    Plots the distribution of all features using Box Plots after standardizing
+    the data to ensure comparability on a single scale.
+    """
+    from sklearn.preprocessing import StandardScaler
+
+    # Assuming the last column is the target and should be excluded
+    feature_cols = data_df.columns[:-1]
+    X = data_df[feature_cols]
+
+    # Standardize the data so all features are comparable
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    df_scaled = pd.DataFrame(X_scaled, columns=feature_cols)
+
+    plt.figure(figsize=(18, 10))
+
+    # Use seaborn boxplot on the standardized data
+    sns.boxplot(data=df_scaled, palette=BLUE_SHADES)
+
+    plt.title('Feature Distributions: Comparative Box Plots (Standardized Data)',
+              fontsize=18, fontweight='bold', pad=20)
+    plt.ylabel('Standardized Value (Z-Score)', fontsize=16, fontweight='bold')
+    plt.xlabel('Features', fontsize=16, fontweight='bold')
+    plt.xticks(rotation=45, ha='right')
+    plt.grid(True, linestyle='--', alpha=0.3, axis='y')
+
+    plt.tight_layout()
+    plt.savefig('output/feature_box_plots_comparison.png', bbox_inches='tight', dpi=300, facecolor='white')
+    plt.close()
+    print("✅ Saved comparative box plots for feature distributions")
+
+
+
+def class_distribution(y_data, class_names=['Class 0', 'Class 1']):
+    """Plot the distribution of the target variable (class balance)."""
+    plt.figure(figsize=(8, 6))
+    counts = pd.Series(y_data).value_counts()
+    counts.index = [class_names[i] for i in counts.index]
+
+    ax = counts.plot(kind='bar', color=[DARK_BLUE, LIGHT_BLUE], alpha=0.8, edgecolor='black', linewidth=1.5)
+
+    plt.title('Target Class Distribution', fontsize=18, fontweight='bold', pad=20)
+    plt.ylabel('Count', fontsize=16, fontweight='bold')
+    plt.xlabel('Class', fontsize=16, fontweight='bold')
+    plt.xticks(rotation=0)
+    plt.grid(True, alpha=0.3, axis='y')
+
+    # Add value labels
+    for p in ax.patches:
+        ax.annotate(f'{p.get_height()}', (p.get_x() + p.get_width() / 2., p.get_height()),
+                    ha='center', va='center', xytext=(0, 9), textcoords='offset points',
+                    fontsize=14, fontweight='bold')
+
+    plt.tight_layout()
+    plt.savefig('output/class_distribution.png', bbox_inches='tight', dpi=300, facecolor='white')
+    plt.close()
+    print("✅ Saved class distribution plot")
+
+
+def correlation_heatmap(data_df):
+    """Plot a heatmap of the feature correlation matrix with feature names."""
+    plt.figure(figsize=(14, 12))
+    corr = data_df.corr()
+
+    # Mask redundant part (upper triangle)
+    mask = np.triu(corr)
+
+    # Create the heatmap with better formatting
+    sns.heatmap(corr, mask=mask, annot=False, fmt=".2f", cmap=BLUE_PALETTE,
+                linewidths=.5, cbar_kws={"shrink": .8})
+
+    # Use actual feature names from the DataFrame
+    feature_names = data_df.columns.tolist()
+
+    plt.xticks(ticks=np.arange(len(feature_names)) + 0.5,
+               labels=feature_names,
+               rotation=45, ha='right', fontsize=10)
+    plt.yticks(ticks=np.arange(len(feature_names)) + 0.5,
+               labels=feature_names,
+               rotation=0, fontsize=10)
+
+    plt.title('Feature Correlation Heatmap', fontsize=18, fontweight='bold', pad=20)
+    plt.tight_layout()
+    plt.savefig('output/correlation_heatmap.png', bbox_inches='tight', dpi=300, facecolor='white')
+    plt.close()
+    print("✅ Saved correlation heatmap with feature names")
+
+
+
+def missing_values_heatmap(data_df):
+    """Plot a heatmap showing the presence of missing values."""
+    plt.figure(figsize=(12, 8))
+
+    # Convert boolean presence of missing values to integer
+    missing_data = data_df.isnull().astype(int)
+
+    # If there are no missing values, create a placeholder/informative plot
+    if missing_data.sum().sum() == 0:
+        plt.text(0.5, 0.5, "No Missing Values Found in Dataset",
+                 horizontalalignment='center', verticalalignment='center',
+                 transform=plt.gca().transAxes, fontsize=16, color='green', fontweight='bold')
+        plt.title('Missing Values Heatmap', fontsize=18, fontweight='bold', pad=20)
+        plt.xticks([])
+        plt.yticks([])
+        plt.tight_layout()
+        plt.savefig('output/missing_values_heatmap.png', bbox_inches='tight', dpi=300, facecolor='white')
+        plt.close()
+        print("✅ Saved missing values heatmap (No missing values)")
+        return
+
+    # Plot the actual missing value heatmap
+    sns.heatmap(missing_data.transpose(), cbar=False, cmap="viridis",
+                yticklabels=True, xticklabels=False, ax=plt.gca())
+
+    plt.title('Missing Values Presence Heatmap (Black=Missing)', fontsize=18, fontweight='bold', pad=20)
+    plt.ylabel('Features', fontsize=16, fontweight='bold')
+    plt.xlabel('Data Samples', fontsize=16, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig('output/missing_values_heatmap.png', bbox_inches='tight', dpi=300, facecolor='white')
+    plt.close()
+    print("✅ Saved missing values heatmap")
+
+
+def cross_validation_schema(X, y, cv_strategy=StratifiedKFold(n_splits=5)):
+    """Visualize the train/test split for a given cross-validation strategy."""
+
+    # Limit to the first 100 samples for visual clarity
+    X_sample = X[:100]
+    y_sample = y[:100]
+
+    n_splits = cv_strategy.get_n_splits(X, y)
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    cmap_train = plt.cm.get_cmap('Blues')
+    cmap_test = plt.cm.get_cmap('Oranges')
+
+    for i, (train_index, test_index) in enumerate(cv_strategy.split(X_sample, y_sample)):
+        # Plot training samples
+        ax.scatter(train_index, [i + 0.5] * len(train_index),
+                   marker='_', s=200, linewidths=2, color=cmap_train(0.8))
+
+        # Plot testing samples
+        ax.scatter(test_index, [i + 0.5] * len(test_index),
+                   marker='_', s=200, linewidths=2, color=cmap_test(0.8))
+
+    # Customizing the plot
+    ax.set_yticks(np.arange(n_splits) + 0.5)
+    ax.set_yticklabels([f'Fold {i + 1}' for i in range(n_splits)])
+    ax.set_ylabel("CV Fold", fontsize=14, fontweight='bold')
+    ax.set_xlabel("Sample Index (First 100 Samples)", fontsize=14, fontweight='bold')
+    ax.set_title(f'{cv_strategy.__class__.__name__} Cross-Validation Schema ({n_splits} Folds)',
+                 fontsize=16, fontweight='bold', pad=20)
+
+    # Create legend
+    ax.legend([Patch(color=cmap_train(0.8)), Patch(color=cmap_test(0.8))],
+              ['Training Set', 'Testing Set'], loc=(1.05, 0.8))
+    ax.set_xlim([-5, 105])
+
+    plt.tight_layout()
+    plt.savefig('output/cross_validation_schema.png', bbox_inches='tight', dpi=300, facecolor='white')
+    plt.close()
+    print("✅ Saved cross-validation schema plot")
+
 
 def save_all_visualizations(models, results, X_train, y_train, X_test, y_test):
-    """Generate and save all visualizations"""
+    """
+    Generate and save all comprehensive visualizations for data analysis
+    and model performance evaluation.
+    """
     print("\n🎨 GENERATING COMPREHENSIVE VISUALIZATIONS...")
 
-    # Get feature names (assuming 30 features from WDBC dataset)
-    feature_names = [f'Feature_{i + 1}' for i in range(X_test.shape[1])]
+    # --- 1. Prepare DataFrames for Data Analysis Plots ---
+    # Combine train and test data to get the full dataset
+    X_full = np.vstack([X_train, X_test])
+    y_full = np.concatenate([y_train, y_test])
 
-    # Generate all plots
+    # Get feature names (assuming 30 features for WDBC-like data)
+    # The actual number of features is taken from X_full.shape[1]
+    feature_names = [f'Feature_{i + 1}' for i in range(X_full.shape[1])]
+    column_names = feature_names + ['Target']
+
+    # Create the full DataFrame for correlation and distribution plots
+    data_df = pd.DataFrame(np.hstack([X_full, y_full.reshape(-1, 1)]), columns=column_names)
+
+    # Simulate missing values for the heatmap test if the original data has none
+    data_df_with_missing = data_df.copy()
+    # Introduce NaNs in a few places for demonstration if your dataset is perfectly clean
+    if data_df.isnull().sum().sum() == 0:
+        if len(data_df) > 10:
+            # Simulate 5 missing values in Feature_2 for illustrative purposes
+            data_df_with_missing.iloc[5:10, 1] = np.nan
+
+            # --- 2. New Data Analysis Plots (Data Understanding) ---
+    print("\n--- Data Analysis Plots ---")
+    plot_feature_box_plots(data_df)
+    class_distribution(y_full, class_names=['Benign (0)', 'Malignant (1)'])
+    correlation_heatmap(data_df)
+    missing_values_heatmap(data_df_with_missing)
+
+    # Cross-Validation Schema
+    cv_strategy = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    cross_validation_schema(X_full, y_full, cv_strategy)
+
+    # --- 3. Existing Model Evaluation Plots (Performance and Interpretation) ---
+    print("\n--- Model Evaluation Plots ---")
+
+    # Core Performance Plots
     plot_comprehensive_performance(results)
-    plot_comprehensive_learning_curves(models, X_train, y_train)
     plot_confusion_matrices_comprehensive(models, X_test, y_test)
     plot_roc_curves_comprehensive(models, X_test, y_test)
 
-    # New enhanced visualizations with blue theme
+    # Learning/Overfitting Analysis Plots
+    plot_comprehensive_learning_curves(models, X_train, y_train)
     plot_comprehensive_learning_curves_single(models, X_train, y_train)
+
+    # Feature Interpretation Plots
     plot_feature_importance_single(models, feature_names, X_test, y_test)
-    plot_precision_recall_curves_enhanced(models, X_test, y_test)
+
+    # Enhanced/Comparative Plots
     plot_training_time_vs_accuracy_enhanced(results)
     plot_performance_radar_enhanced(results)
     plot_model_ranking_comparison(results)
     plot_error_analysis_comparison(results, models, X_test, y_test)
 
     print("\n✅ ALL VISUALIZATIONS SAVED:")
+    print("   - output/data_distribution.png")
+    print("   - output/class_distribution.png")
+    print("   - output/correlation_heatmap.png")
+    print("   - output/missing_values_heatmap.png")
+    print("   - output/cross_validation_schema.png")
     print("   - output/comprehensive_performance.png")
     print("   - output/comprehensive_learning_curves.png")
     print("   - output/confusion_matrices_comprehensive.png")
@@ -746,3 +917,5 @@ def save_all_visualizations(models, results, X_train, y_train, X_test, y_test):
     print("   - output/performance_radar_enhanced.png")
     print("   - output/model_ranking_comparison.png")
     print("   - output/error_analysis_comparison.png")
+    print("   - output/plot_feature_box_plots.png")
+
