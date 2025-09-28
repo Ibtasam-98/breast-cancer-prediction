@@ -16,7 +16,7 @@ from sklearn.ensemble import (RandomForestClassifier,
                               GradientBoostingClassifier)
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.ensemble import StackingClassifier
-from matplotlib.colors import LinearSegmentedColormap # Import for custom colormap
+from matplotlib.colors import LinearSegmentedColormap 
 
 # Set page config
 st.set_page_config(
