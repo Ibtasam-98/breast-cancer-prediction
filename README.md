@@ -14,6 +14,6 @@ A machine learning web application that predicts breast cancer tumors as benign 
   - Stochastic gradient descent classifier
 
 - **Interactive Dashboard**:
-  - Real-time predictions with probability scores
+  - Real time predictions with probability scores
   - Interactive feature sliders
   - Performance comparison of all models
