@@ -27,7 +27,7 @@ warnings.filterwarnings('ignore')
 # Set page config
 st.set_page_config(
     page_title="Breast Cancer Classification",
-    page_icon="🏥",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -438,7 +438,7 @@ def main():
         st.session_state.y_test = None
 
     # Load data
-    st.sidebar.header("📊 Dataset Information")
+    st.sidebar.header("Dataset Information")
     if st.sidebar.button("Load Breast Cancer Dataset"):
         with st.spinner("Loading dataset..."):
             st.session_state.data = load_data()
@@ -461,9 +461,9 @@ def main():
         st.session_state.y_test = y_test
 
         # Model training section
-        st.header("🤖 Model Training")
+        st.header("Model Training")
 
-        if st.button("🚀 Train All Models"):
+        if st.button("Train All Models"):
             st.info("Training models with hyperparameter tuning... This may take a few minutes.")
 
             progress_bar = st.progress(0)
@@ -499,10 +499,10 @@ def main():
 
             st.session_state.trained_models = trained_models
             st.session_state.results = results
-            status_text.text("✅ Training complete!")
+            status_text.text("Training complete!")
 
             # Display results
-            st.header("📊 Training Results")
+            st.header("Training Results")
 
             # Create results dataframe
             results_df = pd.DataFrame([{
@@ -531,11 +531,11 @@ def main():
 
             # Show best model
             best_model_row = results_df.iloc[0]
-            st.success(f"🎯 **Best Model:** {best_model_row['Model']} "
+            st.success(f" **Best Model:** {best_model_row['Model']} "
                        f"(Test Accuracy: {best_model_row['Test Accuracy']:.2%})")
 
             # Visualizations
-            st.header("📈 Performance Visualizations")
+            st.header("Performance Visualizations")
 
             tab1, tab2, tab3, tab4 = st.tabs([
                 "Performance Comparison",
@@ -589,7 +589,7 @@ def main():
                         key=feature
                     )
 
-            if st.button("🔍 Predict Diagnosis"):
+            if st.button("Predict Diagnosis"):
                 try:
                     # Prepare input data
                     input_data = pd.DataFrame([input_features])
@@ -674,10 +674,10 @@ def main():
                     st.error(f"Error making prediction: {str(e)}")
 
     else:
-        st.info("👈 Click 'Load Breast Cancer Dataset' in the sidebar to get started!")
+        st.info("Click 'Load Breast Cancer Dataset' in the sidebar to get started!")
 
         # Display sample of what the app does
-        st.header("🎯 What This App Does")
+        st.header(" What This App Does")
         st.markdown("""
         This machine learning application:
 
