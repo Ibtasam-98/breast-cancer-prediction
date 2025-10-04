@@ -16,13 +16,13 @@ warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
 warnings.filterwarnings('ignore', category=FutureWarning)
 
 # Set global font sizes for enhanced readability
-plt.rcParams['font.size'] = 14
-plt.rcParams['axes.titlesize'] = 18
-plt.rcParams['axes.labelsize'] = 16
-plt.rcParams['xtick.labelsize'] = 14
-plt.rcParams['ytick.labelsize'] = 14
-plt.rcParams['legend.fontsize'] = 12
-plt.rcParams['figure.titlesize'] = 20
+plt.rcParams['font.size'] = 24
+plt.rcParams['axes.titlesize'] = 28
+plt.rcParams['axes.labelsize'] = 26
+plt.rcParams['xtick.labelsize'] = 24
+plt.rcParams['ytick.labelsize'] = 24
+plt.rcParams['legend.fontsize'] = 22
+plt.rcParams['figure.titlesize'] = 30
 
 os.makedirs('output', exist_ok=True)
 
