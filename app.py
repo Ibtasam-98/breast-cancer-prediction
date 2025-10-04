@@ -28,6 +28,17 @@ TEST_SIZE = 0.2
 MODEL_SAVE_PATH = "saved_models"
 os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
 
+# Set smaller font sizes for all plots
+plt.rcParams.update({
+    'font.size': 8,
+    'axes.titlesize': 10,
+    'axes.labelsize': 9,
+    'xtick.labelsize': 8,
+    'ytick.labelsize': 8,
+    'legend.fontsize': 8,
+    'figure.titlesize': 11
+})
+
 # Import from your new modules
 try:
     from preprocessing.preprocessing import load_data, prepare_data_enhanced, scale_data_enhanced
@@ -59,28 +70,28 @@ def load_cached_data():
 # Plot functions
 def plot_confusion_matrix(cm, model_name):
     """Plot a single confusion matrix"""
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=(4, 3))
     cm_norm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
 
     sns.heatmap(cm_norm, annot=True, fmt='.2f', cmap='Blues',
                 xticklabels=['Benign', 'Malignant'],
                 yticklabels=['Benign', 'Malignant'],
-                cbar=False, ax=ax)
+                cbar=False, ax=ax, annot_kws={"size": 7})
 
     for i in range(cm_norm.shape[0]):
         for j in range(cm_norm.shape[1]):
             ax.text(j + 0.5, i + 0.25, f"{cm[i, j]}",
-                    ha='center', va='center', color='black')
+                    ha='center', va='center', color='black', fontsize=7)
 
-    ax.set_title(f'{model_name}', pad=20)
-    ax.set_ylabel('True Label')
-    ax.set_xlabel('Predicted Label')
+    ax.set_title(f'{model_name}', pad=15, fontsize=9)
+    ax.set_ylabel('True Label', fontsize=8)
+    ax.set_xlabel('Predicted Label', fontsize=8)
     return fig
 
 
 def plot_roc_curve_simple(models, X_test, y_test):
     """Plot ROC curves for all models"""
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot([0, 1], [0, 1], 'k--')
 
     colors = plt.cm.Set3(np.linspace(0, 1, len(models)))
@@ -91,16 +102,17 @@ def plot_roc_curve_simple(models, X_test, y_test):
                 probas = model.predict_proba(X_test)
                 fpr, tpr, thresholds = roc_curve(y_test, probas[:, 1])
                 roc_auc = auc(fpr, tpr)
-                ax.plot(fpr, tpr, color=color, linewidth=2, label=f'{name} (AUC = {roc_auc:.3f})')
+                ax.plot(fpr, tpr, color=color, linewidth=1.5, label=f'{name} (AUC = {roc_auc:.3f})')
             except Exception as e:
                 st.warning(f"Could not generate ROC curve for {name}: {str(e)}")
                 continue
 
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title('ROC Curves')
-    ax.legend(loc="lower right")
+    ax.set_xlabel('False Positive Rate', fontsize=8)
+    ax.set_ylabel('True Positive Rate', fontsize=8)
+    ax.set_title('ROC Curves', fontsize=10)
+    ax.legend(loc="lower right", fontsize=7)
     ax.grid(True, alpha=0.3)
+    ax.tick_params(axis='both', which='major', labelsize=7)
     return fig
 
 
@@ -252,7 +264,7 @@ def main():
         # Feature correlations
         st.write("### Feature Correlations")
         try:
-            corr_fig, ax = plt.subplots(figsize=(12, 10))
+            corr_fig, ax = plt.subplots(figsize=(10, 8))
 
             # Calculate correlations
             corr = data.corr()
@@ -261,13 +273,18 @@ def main():
             colors = ["#000080", "lightblue", "white", "lightskyblue"]
             cmap = LinearSegmentedColormap.from_list("dark_blue_white_light_blue_cmap", colors)
 
-            # Plot heatmap
+            # Plot heatmap with smaller font
             sns.heatmap(corr, annot=True, fmt='.2f', cmap=cmap, center=0,
-                        linewidths=0.5, cbar_kws={"shrink": 0.8}, ax=ax)
+                        linewidths=0.5, cbar_kws={"shrink": 0.8}, ax=ax,
+                        annot_kws={"size": 6})
 
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
-            ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
-            ax.set_title('Feature Correlations', fontsize=16, fontweight='bold', pad=20)
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right', fontsize=7)
+            ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=7)
+            ax.set_title('Feature Correlations', fontsize=12, fontweight='bold', pad=15)
+
+            # Adjust colorbar font size
+            cbar = ax.collections[0].colorbar
+            cbar.ax.tick_params(labelsize=7)
 
             st.pyplot(corr_fig)
         except Exception as e:
