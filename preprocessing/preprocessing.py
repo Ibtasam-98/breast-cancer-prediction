@@ -2,9 +2,6 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, RobustScaler, PowerTransformer
-from sklearn.feature_selection import SelectKBest, f_classif
-from sklearn.ensemble import RandomForestClassifier
-from config import settings
 
 
 def load_data(filepath):
