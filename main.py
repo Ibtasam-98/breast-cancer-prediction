@@ -226,36 +226,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-#
-#
-# \begin{table*}[t]
-# \centering
-# \caption{Comparative Analysis of Breast Cancer Prediction Performance}
-# \label{tab:comparison}
-# \begin{tabular}{p{3.2cm}ccp{2.5cm}}
-# \toprule
-# \textbf{Study / Model} & \textbf{Accuracy (\%)} & \textbf{Best Model} & \textbf{Dataset} \\
-# \midrule
-# \textbf{Our Study} & & & \\
-# \quad SGD Classifier & \textbf{98.25} & SGD & WDBC \\
-# \quad XGBoost & \textbf{97.37} & XGBoost & WDBC \\
-# \quad AdaBoost & \textbf{97.37} & AdaBoost & WDBC \\
-# \quad SVM RBF Optimized & \textbf{97.37} & SVM & WDBC \\
-# \quad Random Forest Optimized & \textbf{96.49} & RF & WDBC \\
-# \quad Stacking Enhanced & \textbf{96.49} & Ensemble & WDBC \\
-# \quad Neural Network & \textbf{93.86} & NN & WDBC \\
-# \midrule
-# \textbf{Literature Review} & & & \\
-# \quad Rawal and Ramik (2020) & 97.10 & Random Forest & WBCD \\
-# \quad Chen et al. (2023) & 97.20 & XGBoost & WDBC \\
-# \quad La et al. (2025) & 91.67 & Logistic Regression & Clinical Data \\
-# \quad Naji et al. (2021) & 96.80 & SVM & WDBC \\
-# \quad Sumbaly et al. (2014) & 93.56 & Decision Tree (J48) & WBCD \\
-# \quad Li and Chen (2018) & 96.50 & Random Forest & WBCD+BCCD \\
-# \quad Banu et al. (2025) & 86.34 & SVM & Mammography \\
-# \quad Kavitha et al. (2025) & 96.00 & YOLOv3 & Ultrasound \\
-# \quad Tanveer et al. (2025) & 95.80 & CNN & MIAS+DDSM \\
-# \bottomrule
-# \end{tabular}
-# \end{table*}
