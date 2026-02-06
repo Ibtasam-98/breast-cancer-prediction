@@ -173,8 +173,7 @@ def plot_training_time_vs_accuracy_enhanced(results):
     # Create second y-axis for training time
     ax2 = ax1.twinx()
 
-    # Plot training time as line with markers
-    line = ax2.plot(x, df['training_time'], 'o-', color='#08306b',
+\    line = ax2.plot(x, df['training_time'], 'o-', color='#08306b',
                     linewidth=3, markersize=20, markerfacecolor='white',  # Increased markersize
                     markeredgewidth=2, markeredgecolor='#08306b',
                     label='Training Time')
