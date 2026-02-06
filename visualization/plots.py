@@ -1,3 +1,4 @@
+
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -144,9 +145,10 @@ def plot_feature_importance_single(models, feature_names, X_test, y_test):
     print("✅ Saved single feature importance comparison")
 
 
+
 def plot_training_time_vs_accuracy_enhanced(results):
-    """Enhanced training time vs accuracy using bar-line combination with larger fonts"""
-    fig, ax1 = plt.subplots(figsize=(16, 12))  # Increased figure size
+    """Enhanced training time vs accuracy using bar-line combination"""
+    fig, ax1 = plt.subplots(figsize=(14, 10))
 
     # Sort by accuracy
     df = pd.DataFrame(results).sort_values('test_accuracy', ascending=False)
@@ -161,64 +163,56 @@ def plot_training_time_vs_accuracy_enhanced(results):
                    edgecolor='white', linewidth=2,
                    label='Test Accuracy')
 
-    # Set font sizes - INCREASED SIGNIFICANTLY
-    ax1.set_xlabel('Models', fontsize=18, fontweight='bold')  # Increased from 16
-    ax1.set_ylabel('Test Accuracy (%)', fontsize=26, fontweight='bold', color=DARK_BLUE)  # Increased from 16
-    ax1.tick_params(axis='y', labelcolor=DARK_BLUE, labelsize=14)  # Added labelsize
+    ax1.set_xlabel('Models', fontsize=16, fontweight='bold')
+    ax1.set_ylabel('Test Accuracy (%)', fontsize=16, fontweight='bold', color=DARK_BLUE)
+    ax1.tick_params(axis='y', labelcolor=DARK_BLUE)
     ax1.set_ylim(85, 100)
-
-    # Set x-tick font size
-    ax1.tick_params(axis='x', labelsize=20)  # Added for x-axis
 
     # Create second y-axis for training time
     ax2 = ax1.twinx()
 
-\    line = ax2.plot(x, df['training_time'], 'o-', color='#08306b',
-                    linewidth=3, markersize=20, markerfacecolor='white',  # Increased markersize
+    # Plot training time as line with markers
+    line = ax2.plot(x, df['training_time'], 'o-', color='#08306b',
+                    linewidth=3, markersize=10, markerfacecolor='white',
                     markeredgewidth=2, markeredgecolor='#08306b',
                     label='Training Time')
 
-    ax2.set_ylabel('Training Time (seconds)', fontsize=18, fontweight='bold', color='#08306b')  # Increased from 16
-    ax2.tick_params(axis='y', labelcolor='#08306b', labelsize=14)  # Added labelsize
+    ax2.set_ylabel('Training Time (seconds)', fontsize=16, fontweight='bold', color='#08306b')
+    ax2.tick_params(axis='y', labelcolor='#08306b')
 
-    # Set x-axis labels with larger font
+    # Set x-axis labels
     ax1.set_xticks(x)
-    ax1.set_xticklabels(df['model'], rotation=45, ha='right', fontsize=16)  # Increased from 14
+    ax1.set_xticklabels(df['model'], rotation=45, ha='right', fontsize=14)
 
-    # Add value labels on bars with LARGER FONTS
+    # Add value labels on bars
     for i, bar in enumerate(bars):
         height = bar.get_height()
         ax1.annotate(f'{height:.1f}%',
                      xy=(bar.get_x() + bar.get_width() / 2, height),
-                     xytext=(0, 5), textcoords="offset points",  # Increased offset
-                     ha='center', va='bottom',
-                     fontsize=16, fontweight='bold',  # Increased from 12
+                     xytext=(0, 3), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=12, fontweight='bold',
                      color=DARK_BLUE)
 
-        # Add training time annotations with LARGER FONTS
+        # Add training time annotations
         time_val = df.iloc[i]['training_time']
         ax2.annotate(f'{time_val:.2f}s',
                      xy=(i, time_val),
-                     xytext=(0, 15), textcoords="offset points",  # Increased offset
-                     ha='center', va='bottom',
-                     fontsize=14, fontweight='bold',  # Increased from 11
+                     xytext=(0, 10), textcoords="offset points",
+                     ha='center', va='bottom', fontsize=11, fontweight='bold',
                      color='#08306b')
 
-    # Combine legends with larger font
+    # Combine legends
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2,
-               loc='upper left', fontsize=14)  # Added fontsize
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
 
-    plt.title('Model Performance: Accuracy vs Training Time',
-              fontsize=22, fontweight='bold', pad=25)  # Increased from 18
+    plt.title('Model Performance: Accuracy vs Training Time', fontsize=18, fontweight='bold', pad=20)
     plt.grid(True, alpha=0.3, axis='y')
 
     plt.tight_layout()
-    plt.savefig('output/training_time_vs_accuracy_enhanced.png',
-                bbox_inches='tight', dpi=300, facecolor='white')
+    plt.savefig('output/training_time_vs_accuracy_enhanced.png', bbox_inches='tight', dpi=300, facecolor='white')
     plt.close()
-    print("✅ Saved enhanced training time vs accuracy plot with larger fonts")
+    print("✅ Saved enhanced training time vs accuracy plot")
 
 
 def plot_performance_radar_enhanced(results):
@@ -925,4 +919,3 @@ def save_all_visualizations(models, results, X_train, y_train, X_test, y_test):
     print("   - output/model_ranking_comparison.png")
     print("   - output/error_analysis_comparison.png")
     print("   - output/plot_feature_box_plots.png")
-
