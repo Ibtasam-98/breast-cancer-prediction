@@ -417,7 +417,7 @@ def plot_feature_importance(models, feature_names, X_test, y_test):
 # =============================================================================
 
 def main():
-    st.title("🏥 Breast Cancer Classification Dashboard")
+    st.title("Breast Cancer Classification Dashboard")
     st.markdown("""
     This interactive app uses machine learning to classify breast cancer tumors as **benign** or **malignant**.
     It trains multiple models, compares their performance, and allows you to make predictions.
@@ -567,7 +567,7 @@ def main():
 
         # Prediction interface
         if st.session_state.trained_models is not None:
-            st.header("🔮 Prediction Interface")
+            st.header("Prediction Interface")
             st.markdown("Input feature values to get predictions from all trained models:")
 
             # Get feature names
