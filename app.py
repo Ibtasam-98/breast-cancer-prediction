@@ -117,7 +117,7 @@ def plot_roc_curve_simple(models, X_test, y_test):
 
 # Main function
 def main():
-    st.title("🧠 Breast Cancer Classification")
+    st.title("Breast Cancer Classification")
     st.markdown("""
     This app uses advanced machine learning to classify breast cancer tumors as benign or malignant
     using an enhanced pipeline with multiple optimized models.
@@ -144,7 +144,7 @@ def main():
     model_definitions = get_models()
 
     # Train models
-    if st.button("🚀 Train All Models"):
+    if st.button("Train All Models"):
         st.info("Training enhanced models with hyperparameter tuning... This may take a few minutes.")
 
         progress_bar = st.progress(0)
@@ -194,7 +194,7 @@ def main():
         with open(os.path.join(MODEL_SAVE_PATH, 'scaler.pkl'), 'wb') as f:
             pickle.dump(scaler, f)
 
-        status_text.text("✅ Training complete!")
+        status_text.text("Training complete!")
 
         # Show results
         st.subheader("📊 Model Performance Summary")
@@ -214,10 +214,10 @@ def main():
         # Show best model
         best_model_name = results_df.iloc[0]['Model']
         best_test_accuracy = results_df.iloc[0]['Test Accuracy']
-        st.success(f"🎯 Best model: **{best_model_name}** with test accuracy of **{best_test_accuracy:.2%}**")
+        st.success(f"Best model: **{best_model_name}** with test accuracy of **{best_test_accuracy:.2%}**")
 
         # Show classification report for best model
-        st.subheader(f"📋 Classification Report for {best_model_name}")
+        st.subheader(f"Classification Report for {best_model_name}")
         best_model = trained_models[best_model_name]
         y_pred = best_model.predict(X_test_scaled)
         report_text = classification_report(y_test, y_pred, target_names=['Benign', 'Malignant'])
@@ -290,7 +290,7 @@ def main():
             st.warning(f"Could not generate correlation plot: {str(e)}")
 
     # Prediction interface
-    st.sidebar.header("🔮 Prediction Interface")
+    st.sidebar.header("Prediction Interface")
     st.sidebar.info("Input feature values to get predictions from all trained models")
 
     # Get feature names (exclude diagnosis)
@@ -429,7 +429,7 @@ def main():
             st.info("Please train the models first by clicking the 'Train All Models' button.")
 
     # Model information
-    st.sidebar.header("📋 Model Information")
+    st.sidebar.header("Model Information")
     st.sidebar.write(f"**Available Models:** {len(model_definitions)}")
     for i, model_name in enumerate(model_definitions.keys(), 1):
         st.sidebar.write(f"{i}. {model_name}")
