@@ -655,11 +655,11 @@ def main():
                         if malignant_count > benign_count:
                             consensus = "Malignant"
                             consensus_color = "red"
-                            emoji = "🔴"
+                            emoji = ""
                         else:
                             consensus = "Benign"
                             consensus_color = "green"
-                            emoji = "🟢"
+                            emoji = ""
 
                         st.markdown(f"### {emoji} Consensus Prediction: "
                                     f"<span style='color:{consensus_color}; font-weight:bold'>{consensus}</span>",
